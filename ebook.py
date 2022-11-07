@@ -21,48 +21,62 @@ page = 1
 # get menu items
 # get body
 
-def main():
-    url = sys.argv[1]
+def get_link_content(link, state):
+    link_response = requests.get(state['base_url'] + link['href'])
+    
+    soup = bs4.BeautifulSoup(link_response.content.decode('utf-8'),'lxml')
 
-    base_url = re.sub("/[\w+\-\_]*.html", "/", url)
+    body = soup.select_one('#main-col-body')
     
-    print(base_url)
+    for remove_tag in remove_tags:
+        for tag in body.find_all(remove_tag):
+            tag.decompose()
     
-    toc_response = requests.get(base_url + 'toc-contents.json')
+    html = re.sub(r'[\ \n]{2,}', ' ', str(body))
+    html = re.sub(r'<p>[\ \n]{1,}', '<p>', html)
+    html = re.sub(r'[\ \n]{1,}</p>', '</p>', html)
+    html = re.sub(r'</ul>', '</ul>\n\n', html)
+    
+    md = markdownify.markdownify(
+        html, 
+        heading_style=markdownify.ATX
+    )
+
+    md = re.sub(r'[\n]{4,}\t\+', '\n\t+', md)
+
+    prefix = str(state['count']).zfill(2) + '-'
+
+    html_file = open('.output_html/' + prefix + link['href'],'w+')
+    html_file.write(html)
+    html_file.close()
+    
+    md_file = open('.output_md/' + prefix + link['href'].replace('.html','.md'),'w+')
+    md_file.write(md)
+    md_file.close()
+    
+    state['count'] += 1
+    
+    if 'contents' in link:
+        for sub_link in link['contents']:        
+            get_link_content(sub_link, state)
+    
+    return True
+
+def main():    
+    url = sys.argv[1]
+    state = {'count': 0, 'base_url': re.sub("/[\w+\-\_]*.html", "/", url)}
+    
+    print(state['base_url'])
+    
+    toc_response = requests.get(state['base_url'] + 'toc-contents.json')
     
     toc = json.loads(toc_response.text)
     
-    print(toc['contents'])
+    # print(toc['contents'])
 
-    for link in toc['contents']:
-        
-        link_response = requests.get(base_url + link['href'])
-        
-        soup = bs4.BeautifulSoup(link_response.text,'lxml', from_encoding='utf-8')
+    for link in toc['contents']:        
+        get_link_content(link, state)
 
-        body = soup.select_one('#main-col-body')
-        
-        for remove_tag in remove_tags:
-            for tag in body.find_all(remove_tag):
-                tag.decompose()
-        
-        html = re.sub(r'[\ \n]{2,}', ' ', str(body))
-        html = re.sub(r'<p>[\ \n]{1,}', '<p>', html)
-        html = re.sub(r'[\ \n]{1,}</p>', '</p>', html)
-        
-        md = markdownify.markdownify(
-            html, 
-            heading_style=markdownify.ATX
-        )
-  
-        html_file = open('.output/' + link['href'],'w+')
-        html_file.write(html)
-        html_file.close()
-        
-        md_file = open('.output/' + link['href'].replace('.html','.md'),'w+')
-        md_file.write(md)
-        md_file.close()
-        
     return True
 
 if __name__ == "__main__":
