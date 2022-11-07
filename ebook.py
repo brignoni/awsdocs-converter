@@ -1,9 +1,10 @@
-import requests
 import bs4
-import sys
-import re
+import glob
 import json
 import markdownify
+import os
+import re
+import requests
 
 remove_tags = [
     'awsdocs-page-header',
@@ -12,6 +13,9 @@ remove_tags = [
     'awsdocs-language-banner',
     'awsdocs-filter-selector',
 ]
+
+OUTPUT_HTML = '.output_html/'
+OUTPUT_MD = '.output_md/'
 
 
 def get_link_content(link, state):
@@ -37,14 +41,13 @@ def get_link_content(link, state):
 
     md = re.sub(r'[\n]{4,}\t\+', '\n\t+', md)
 
-    prefix = str(state['count']).zfill(2) + '-'
+    filename = state['id'] + '/' + str(state['count']).zfill(2) + '-' + link['href']
 
-    html_file = open('.output_html/' + prefix + link['href'], 'w+')
+    html_file = open(OUTPUT_HTML + filename, 'w+')
     html_file.write(html)
     html_file.close()
 
-    md_file = open('.output_md/' + prefix +
-                   link['href'].replace('.html', '.md'), 'w+')
+    md_file = open(OUTPUT_MD + filename.replace('.html', '.md'), 'w+')
     md_file.write(md)
     md_file.close()
 
@@ -58,15 +61,50 @@ def get_link_content(link, state):
 
 
 def main():
-    url = sys.argv[1]
-    state = {'count': 0, 'base_url': re.sub("/[\w+\-\_]*.html", "/", url)}
+    
+    url = input('Enter AWS Whitepaper URL: ')
+    
+    base_url = re.sub("/[\w+\-\_]*.html", "/", url.split('?')[0])
+    
+    id = base_url.split('/')[len(base_url.split('/'))-2]
+    
+    if not os.path.exists(OUTPUT_MD + id):
+        os.makedirs(OUTPUT_MD + id)
+
+    if not os.path.exists(OUTPUT_HTML + id):
+        os.makedirs(OUTPUT_HTML + id)
+    
+    state = {'count': 0, 'base_url': base_url, 'id': id}
+
+    print(state)
 
     toc_response = requests.get(state['base_url'] + 'toc-contents.json')
+    
+    home_response = requests.get(url)
+
+    soup = bs4.BeautifulSoup(home_response.content.decode('utf-8'), 'lxml')
+
+    home_body = soup.select_one('#main-col-body')
+
+    title = home_body.h1.text
 
     toc = json.loads(toc_response.text)
 
     for link in toc['contents']:
         get_link_content(link, state)
+
+    html_file = open(OUTPUT_MD + state['id'] + '/title.txt', 'w+')
+    html_file.write(f'---\ntitle: {title}\nauthor: AWS\nlanguage: en-US')
+    html_file.close()
+
+    filenames = glob.glob(OUTPUT_MD + state['id'] + '/*.md')
+
+    filenames.sort()
+    
+    filenames_str = ' '.join(map(str,filenames))
+
+    os.system(f'pandoc -o .output_ebook/{id}.epub {OUTPUT_MD}{id}/title.txt {filenames_str}')
+    os.system(f'/Applications/calibre.app/Contents/MacOS/ebook-convert .output_ebook/{id}.epub .output_ebook/{id}.mobi')
 
     return True
 
