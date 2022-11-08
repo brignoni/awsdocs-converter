@@ -6,6 +6,7 @@ import os
 import re
 import requests
 
+CALIBRE_EBOOK_PATH = '/Applications/calibre.app/Contents/MacOS/ebook-convert'
 OUTPUT_EBOOK = '.output_ebook/'
 OUTPUT_MD = '.output_markdown/'
 URL_REGEX = r'^https://docs.aws.amazon.com/.*'
@@ -57,7 +58,7 @@ class AWSDocsPage:
 
     def title(self):
         if 'title' not in self._toc:
-            return self.content().h1.text.trim()
+            return self.content().h1.text.strip()
 
         return self._toc['title']
 
@@ -106,7 +107,7 @@ class AWSDocs(AWSDocsPage):
         self._toc = json.loads(res.text)
         return self._toc['contents']
 
-    def ebook(self):
+    def to_markdown(self):
         if not os.path.exists(OUTPUT_MD + self.id()):
             os.makedirs(OUTPUT_MD + self.id())
 
@@ -120,81 +121,47 @@ class AWSDocs(AWSDocsPage):
             file.write(page.markdown())
             file.close()
 
+    def to_ebook(self):
+
+        self.to_markdown()
+
+        filenames = glob.glob(OUTPUT_MD + self.id() + '/*.md')
+
+        filenames.sort()
+
+        filenames_args = ' '.join(map(str, filenames))
+
+        metadata_path = OUTPUT_MD + self.id() + '/metadata.yaml'
+
+        metadata = open(metadata_path, 'w+')
+        metadata.write(f'---\ntitle: {self.title()}\nauthor: AWS\nlanguage: en-US\n---')
+        metadata.close()
+
+        epub_command = f'pandoc -o {OUTPUT_EBOOK}{self.id()}.epub {metadata_path} {filenames_args}'
+
+        os.system(epub_command)
+
         return self
+
+    def to_mobi(self):
+        self.to_ebook()
+        id = self.id()
+        mobi_command = f'{CALIBRE_EBOOK_PATH} {OUTPUT_EBOOK}{self.id()}.epub {OUTPUT_EBOOK}{self.id()}.mobi'
+        os.system(mobi_command)
 
     def __str__(self) -> str:
         return f'<AWSDoc id={self.id()}>'
-
-
-def get_link_content(link, state):
-    link_response = requests.get(state['base_url'] + link['href'])
-
-    soup = bs4.BeautifulSoup(link_response.content.decode('utf-8'), 'lxml')
-
-    body = soup.select_one('#main-col-body')
-
-    for remove_tag in remove_tags:
-        for tag in body.find_all(remove_tag):
-            tag.decompose()
-
-    html = re.sub(r'[\ \n]{2,}', ' ', str(body))
-    html = re.sub(r'<p>[\ \n]{1,}', '<p>', html)
-    html = re.sub(r'[\ \n]{1,}</p>', '</p>', html)
-    html = re.sub(r'</ul>', '</ul>\n\n', html)
-
-    md = markdownify.markdownify(
-        html,
-        heading_style=markdownify.ATX
-    )
-
-    md = re.sub(r'[\n]{4,}\t\+', '\n\t+', md)
-
-    filename = state['id'] + '/' + \
-        str(state['count']).zfill(2) + '-' + link['href']
-
-    # html_file = open(OUTPUT_HTML + filename, 'w+')
-    # html_file.write(html)
-    # html_file.close()
-
-    md_file = open(OUTPUT_MD + filename.replace('.html', '.md'), 'w+')
-    md_file.write(md)
-    md_file.close()
-
-    state['count'] += 1
-
-    if 'contents' in link:
-        for sub_link in link['contents']:
-            get_link_content(sub_link, state)
-
-    return True
 
 
 def main():
 
     url = input(ENTER_DOC_URL)
 
-    root = AWSDocs(url)
+    doc = AWSDocs(url)
 
-    # Check this is a valid AWS Whitepaper URL.
-    root.validate()
+    doc.validate()
 
-    # Download the HTML pages, convert to markdown and write to disk.
-    root.ebook()
-
-    # html_file = open(OUTPUT_MD + state['id'] + '/title.txt', 'w+')
-    # html_file.write(f'---\ntitle: {title}\nauthor: AWS\nlanguage: en-US')
-    # html_file.close()
-
-    # filenames = glob.glob(OUTPUT_MD + state['id'] + '/*.md')
-
-    # filenames.sort()
-
-    # filenames_str = ' '.join(map(str, filenames))
-
-    # os.system(
-    #     f'pandoc -o .output_ebook/{id}.epub {OUTPUT_MD}{id}/title.txt {filenames_str}')
-    # os.system(
-    #     f'/Applications/calibre.app/Contents/MacOS/ebook-convert .output_ebook/{id}.epub .output_ebook/{id}.mobi')
+    doc.to_mobi()
 
     return True
 
