@@ -11,6 +11,7 @@ OUTPUT_EBOOK = '.output_ebook/'
 OUTPUT_MD = '.output_markdown/'
 URL_REGEX = r'^https://docs.aws.amazon.com/.*'
 ENTER_DOC_URL = 'Enter AWS Documentation URL: '
+EPUB_DIR = '/EPUB/'
 
 REMOVE_HTML_TAGS = [
     'awsdocs-page-header',
@@ -36,15 +37,19 @@ class AWSDocsPage:
             return self._url
         return self.base_url() + '/' + self._toc['href']
 
-    def id(self) -> str:
-        if 'href' in self._toc:
-            return re.sub('.html', '', self._toc['href'])
-
+    def root_id(self):
         return self.base_url().split('/')[len(self.base_url().split('/'))-2]
 
+    def id(self) -> str:
+        if 'href' not in self._toc:
+            return self.root_id()
+        return re.sub('.html', '', self._toc['href'])
+
     def content(self):
+        # Return cached content if available
         if hasattr(self, '_content'):
             return self._content
+
         res = requests.get(self.url())
         html = res.content.decode('utf-8')
         soup = bs4.BeautifulSoup(html, 'lxml')
@@ -56,9 +61,12 @@ class AWSDocsPage:
 
         return self._content
 
+    def content_title(self):
+        return self.content().h1.text.strip()
+
     def title(self):
         if 'title' not in self._toc:
-            return self.content().h1.text.strip()
+            return self.content_title()
 
         return self._toc['title']
 
@@ -81,10 +89,27 @@ class AWSDocsPage:
 
         md = re.sub(r'[\n]{4,}\t\+', '\n\t+', md)
 
+        md = re.sub(r'\.\/', self.base_url(), md)
+
         if self.has_children():
             for page in self.children():
                 print(page)
-                md += page.markdown() + "\n\n---\n\n"
+                md += page.markdown()
+
+        images = re.findall(r'/(images/.*\.\w+)', md)
+
+        if len(images) > 0 and not os.path.exists(OUTPUT_MD + self.root_id() + EPUB_DIR + os.path.dirname(images[0])):
+            os.makedirs(OUTPUT_MD + self.root_id() +
+                        EPUB_DIR + os.path.dirname(images[0]))
+
+        for image_path in images:
+            print('  ' + image_path)
+            print(self.base_url() + image_path)
+            image = open(OUTPUT_MD + self.root_id() +
+                         EPUB_DIR + image_path, 'wb')
+            res = requests.get(self.base_url() + image_path)
+            image.write(res.content)
+            image.close()
 
         return md
 
@@ -111,9 +136,9 @@ class AWSDocs(AWSDocsPage):
         if not os.path.exists(OUTPUT_MD + self.id()):
             os.makedirs(OUTPUT_MD + self.id())
 
-        self.toc()
-
         print(self)
+
+        self.toc()
 
         for idx, page in enumerate(self.children()):
             filename = self.id() + '/' + str(idx).zfill(2) + '-' + page.id()
@@ -121,50 +146,33 @@ class AWSDocs(AWSDocsPage):
             file.write(page.markdown())
             file.close()
 
-    def to_ebook(self):
-
+    def to_epub(self):
         self.to_markdown()
 
         filenames = glob.glob(OUTPUT_MD + self.id() + '/*.md')
-
         filenames.sort()
-
         filenames_args = ' '.join(map(str, filenames))
 
-        metadata_path = OUTPUT_MD + self.id() + '/metadata.yaml'
+        metadata = [
+            f'title="{self.title()}"',
+            'author="docs.aws.amazon.com"',
+            'language="en-US"',
+        ]
 
-        metadata = open(metadata_path, 'w+')
-        metadata.write(f'---\ntitle: {self.title()}\nauthor: AWS\nlanguage: en-US\n---')
-        metadata.close()
+        metadata_args = ' --metadata '.join(map(str, metadata))
 
-        epub_command = f'pandoc -o {OUTPUT_EBOOK}{self.id()}.epub {metadata_path} {filenames_args}'
+        epub_command = f'pandoc --metadata {metadata_args} -o {OUTPUT_EBOOK}{self.id()}.epub {filenames_args}'
+
+        print(epub_command)
 
         os.system(epub_command)
 
         return self
 
     def to_mobi(self):
-        self.to_ebook()
-        id = self.id()
+        self.to_epub()
         mobi_command = f'{CALIBRE_EBOOK_PATH} {OUTPUT_EBOOK}{self.id()}.epub {OUTPUT_EBOOK}{self.id()}.mobi'
         os.system(mobi_command)
 
     def __str__(self) -> str:
         return f'<AWSDoc id={self.id()}>'
-
-
-def main():
-
-    url = input(ENTER_DOC_URL)
-
-    doc = AWSDocs(url)
-
-    doc.validate()
-
-    doc.to_mobi()
-
-    return True
-
-
-if __name__ == "__main__":
-    main()
