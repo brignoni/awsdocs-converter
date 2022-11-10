@@ -1,11 +1,10 @@
-from AWSDocsConverter import AWSDocs, ENTER_DOC_URL
+import sys
+import AWSDocsConverter
 
 
-def main():
+def main(args):
 
-    url = input(ENTER_DOC_URL)
-
-    doc = AWSDocs(url)
+    doc = AWSDocsConverter.init(args)
 
     doc.validate()
 
@@ -15,4 +14,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

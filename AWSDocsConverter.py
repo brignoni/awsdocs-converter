@@ -96,7 +96,7 @@ class AWSDocsPage:
                 print(page)
                 md += page.markdown()
 
-        images = re.findall(r'/(images/.*\.\w+)', md)
+        images = re.findall(r'\((/images/.*\.\w+)\)', md)
 
         if len(images) > 0 and not os.path.exists(OUTPUT_MD + self.root_id() + EPUB_DIR + os.path.dirname(images[0])):
             os.makedirs(OUTPUT_MD + self.root_id() +
@@ -176,3 +176,11 @@ class AWSDocs(AWSDocsPage):
 
     def __str__(self) -> str:
         return f'<AWSDoc id={self.id()}>'
+
+
+def init(args) -> AWSDocs:
+    if len(args) > 0:
+        url = args[0]
+    else:
+        url = input(ENTER_DOC_URL)
+    return AWSDocs(url)
