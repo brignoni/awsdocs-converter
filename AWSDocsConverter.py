@@ -85,35 +85,6 @@ class AWSDocsPage:
     def has_children(self):
         return len(self.children()) > 0
 
-    def process_markdown_images(self, md) -> str:
-
-        images = re.findall(REGEX_MD_IMAGE, md)
-
-        if len(images) == 0:
-            return md
-
-        RESOURCES_OUTPUT_DIR = OUTPUT_MD + self.root_id() + RESOURCES_DIR + '/'
-
-        if not os.path.exists(RESOURCES_OUTPUT_DIR):
-            os.makedirs(RESOURCES_OUTPUT_DIR)
-
-        for image in images:
-
-            image_filename = image.split('/')[-1]
-
-            print('  Downloading... ' + image_filename)
-
-            # Replace leading slash with relative path
-            md = re.sub(image, './' + image_filename, md)
-
-            # Download image file to expected path
-            image_file = open(RESOURCES_OUTPUT_DIR + image_filename, 'wb')
-            res = requests.get(self.base_url() + '/images/' + image_filename)
-            image_file.write(res.content)
-            image_file.close()
-
-        return md
-
     def markdown(self) -> str:
 
         html = re.sub(r'[\ \n]{2,}', ' ', str(self.content()))
@@ -134,7 +105,7 @@ class AWSDocsPage:
                 print(page)
                 md += page.markdown()
 
-        md = self.process_markdown_images(md)
+        # md = self.process_markdown_images(md)
 
         return md
 
@@ -164,6 +135,35 @@ class AWSDocs(AWSDocsPage):
 
         return self._toc['contents']
 
+    def process_markdown_images(self, md) -> str:
+
+        images = re.findall(REGEX_MD_IMAGE, md)
+
+        if len(images) == 0:
+            return md
+
+        RESOURCES_OUTPUT_DIR = OUTPUT_MD + self.root_id() + RESOURCES_DIR + '/'
+
+        if not os.path.exists(RESOURCES_OUTPUT_DIR):
+            os.makedirs(RESOURCES_OUTPUT_DIR)
+
+        for image in images:
+
+            image_filename = image.split('/')[-1]
+
+            print('Processing image: ' + image_filename)
+
+            # Replace leading slash with relative path
+            md = re.sub(image, './' + image_filename, md)
+
+            # Download image file to expected path
+            image_file = open(RESOURCES_OUTPUT_DIR + image_filename, 'wb')
+            res = requests.get(self.base_url() + '/images/' + image_filename)
+            image_file.write(res.content)
+            image_file.close()
+
+        return md
+
     def to_markdown(self):
 
         if not os.path.exists(OUTPUT_MD + self.id()):
@@ -173,22 +173,21 @@ class AWSDocs(AWSDocsPage):
 
         self.toc()
 
-        for idx, page in enumerate(self.children()):
-            filename = self.id() + '/' + str(idx).zfill(2) + '-' + page.id()
-            file = open(OUTPUT_MD + filename + '.md', 'w+')
-            file.write(page.markdown())
-            file.close()
+        md = '\n'.join(list(map(lambda page: page.markdown(), self.children())))
+            
+        md = self.process_markdown_images(md)
+            
+        filename = self.id() + '/' + self.id()
+        file = open(OUTPUT_MD + filename + '.md', 'w+')
+        file.write(md)
+        file.close()
 
     def to_epub(self):
 
         self.to_markdown()
 
         path_ebook = f'{OUTPUT_EBOOK}{self.id()}'
-        path_md = f'{OUTPUT_MD}{self.id()}'
-
-        filenames = glob.glob(path_md + '/*.md')
-        filenames.sort()
-        filenames_args = ' '.join(map(str, filenames))
+        path_md = f'{path_ebook}/{self.id()}.md'
 
         metadata = [
             f'title="{self.title()}"',
@@ -198,7 +197,7 @@ class AWSDocs(AWSDocsPage):
 
         metadata_args = ' --metadata '.join(map(str, metadata))
 
-        epub_command = f'pandoc --resource-path {path_md}{RESOURCES_DIR} --metadata {metadata_args} -o {path_ebook}.epub {filenames_args}'
+        epub_command = f'pandoc --resource-path {path_md}{RESOURCES_DIR} --metadata {metadata_args} -o {path_ebook}.epub {path_md}'
 
         print(epub_command)
 
