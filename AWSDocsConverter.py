@@ -198,7 +198,7 @@ class AWSDocs(AWSDocsPage):
 
         metadata_args = ' --metadata '.join(map(str, metadata))
 
-        epub_command = f'pandoc --resource-path {path_md}{RESOURCES_DIR} --metadata {metadata_args} -o {path_ebook}.epub {filenames_args} --output-profile kindle_oasis'
+        epub_command = f'pandoc --resource-path {path_md}{RESOURCES_DIR} --metadata {metadata_args} -o {path_ebook}.epub {filenames_args}'
 
         print(epub_command)
 

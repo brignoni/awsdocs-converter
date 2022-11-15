@@ -10,8 +10,6 @@ def main(args):
 
     doc.to_markdown()
 
-    return True
-
 
 if __name__ == "__main__":
     main(sys.argv[1:])
