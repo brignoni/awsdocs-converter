@@ -1,10 +1,10 @@
 import sys
-import AWSDocsConverter
+import Converter
 
 
 def main(args):
 
-    doc = AWSDocsConverter.init(args)
+    doc = Converter.init(args)
 
     doc.validate()
 

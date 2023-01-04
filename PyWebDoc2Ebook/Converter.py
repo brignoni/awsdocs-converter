@@ -1,10 +1,10 @@
 import bs4
-import glob
 import json
 import markdownify
 import os
 import re
 import requests
+from adapters.AWSAdapter import AWSAdapter
 
 CALIBRE_CLI_PATH = '/Applications/calibre.app/Contents/MacOS/ebook-convert'
 OUTPUT_EBOOK = '.output_ebook/'
@@ -21,11 +21,22 @@ REMOVE_HTML_TAGS = [
     'awsdocs-filter-selector',
 ]
 
+ADAPTERS = [
+    AWSAdapter()
+]
 
-class AWSDocsPage:
 
-    def __init__(self, url, toc={'root': True}) -> None:
+class Adapter():
+
+    def __init__(self) -> None:
+        pass
+
+
+class DocsPage:
+
+    def __init__(self, url, adapter, toc={'root': True}) -> None:
         self._url = url
+        self._adapter = adapter
         self._toc = toc
         pass
 
@@ -80,7 +91,7 @@ class AWSDocsPage:
         if 'contents' not in self._toc:
             return []
 
-        return list(map(lambda page_toc: AWSDocsPage(self._url, page_toc), self._toc['contents']))
+        return list(map(lambda page_toc: DocsPage(self._url, page_toc), self._toc['contents']))
 
     def has_children(self):
         return len(self.children()) > 0
@@ -119,10 +130,10 @@ class AWSDocsPage:
         return True
 
     def __str__(self) -> str:
-        return f'<AWSDocsPage id={self.id()}>'
+        return f'<DocsPage id={self.id()}>'
 
 
-class AWSDocs(AWSDocsPage):
+class Docs(DocsPage):
 
     def toc(self):
 
@@ -173,10 +184,11 @@ class AWSDocs(AWSDocsPage):
 
         self.toc()
 
-        md = '\n'.join(list(map(lambda page: page.markdown(), self.children())))
-            
+        md = '\n'.join(
+            list(map(lambda page: page.markdown(), self.children())))
+
         md = self.process_markdown_images(md)
-            
+
         filename = self.id() + '/' + self.id()
         file = open(OUTPUT_MD + filename + '.md', 'w+')
         file.write(md)
@@ -187,7 +199,8 @@ class AWSDocs(AWSDocsPage):
         self.to_markdown()
 
         path_ebook = f'{OUTPUT_EBOOK}{self.id()}'
-        path_md = f'{path_ebook}/{self.id()}.md'
+        path_md = f'{OUTPUT_MD}{self.id()}'
+        path_id = f'{OUTPUT_MD}{self.id()}/{self.id()}'
 
         metadata = [
             f'title="{self.title()}"',
@@ -197,7 +210,7 @@ class AWSDocs(AWSDocsPage):
 
         metadata_args = ' --metadata '.join(map(str, metadata))
 
-        epub_command = f'pandoc --resource-path {path_md}{RESOURCES_DIR} --metadata {metadata_args} -o {path_ebook}.epub {path_md}'
+        epub_command = f'pandoc --resource-path {path_md}{RESOURCES_DIR} --metadata {metadata_args} -o {path_ebook}.epub {path_id}.md'
 
         print(epub_command)
 
@@ -216,7 +229,7 @@ class AWSDocs(AWSDocsPage):
             '--personal-doc',
             '--prefer-author-sort',
         ]
-    
+
         mobi_args_str = ' '.join(map(str, mobi_args))
 
         mobi_command = f'{CALIBRE_CLI_PATH} {path_ebook}.epub {path_ebook}.mobi {mobi_args_str}'
@@ -226,14 +239,17 @@ class AWSDocs(AWSDocsPage):
         os.system(mobi_command)
 
     def __str__(self) -> str:
-        return f'<AWSDoc id={self.id()}>'
+        return f'<Docs id={self.id()}>'
 
 
-def init(args) -> AWSDocs:
+def init(args) -> Docs:
 
     if len(args) > 0:
         url = args[0]
     else:
         url = input(ENTER_DOC_URL)
 
-    return AWSDocs(url)
+    # @todo select adapter from regex matcher
+    adapter = ADAPTERS[0]
+
+    return Docs(url, adapter)
