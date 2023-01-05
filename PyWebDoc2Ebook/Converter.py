@@ -1,10 +1,24 @@
 import bs4
 import json
 import markdownify
+import sys
 import os
 import re
 import requests
-from adapters.AWSAdapter import AWSAdapter
+from Integration import PluginData
+from plugins.AWSPlugin import AWSPlugin
+ 
+# getting the name of the directory
+# where the this file is present.
+current = os.path.dirname(os.path.realpath(__file__))
+ 
+# Getting the parent directory name
+# where the current directory is present.
+parent = os.path.dirname(current)
+ 
+# adding the parent directory to
+# the sys.path.
+sys.path.append(parent)
 
 CALIBRE_CLI_PATH = '/Applications/calibre.app/Contents/MacOS/ebook-convert'
 OUTPUT_EBOOK = '.output_ebook/'
@@ -22,23 +36,78 @@ REMOVE_HTML_TAGS = [
 ]
 
 ADAPTERS = [
-    AWSAdapter()
+    AWSPlugin()
 ]
 
 
-class Adapter():
+class TocItem:
 
-    def __init__(self) -> None:
-        pass
+    title: str
+    uri: str
+    children = []
+
+    def __init__(self, title, uri, children=[]) -> None:
+        self.title = title
+        self.uri = uri
+        self.children = children
+
+    def __str__(self) -> str:
+        return f'<TocItem title="{self.title}" uri="{self.uri}" childrenCount={len(self.children)}>'
 
 
-class DocsPage:
+class Docs:
 
-    def __init__(self, url, adapter, toc={'root': True}) -> None:
+    _content = None
+    _toc = None
+
+    def __init__(self, url, plugin, toc={'root': True}) -> None:
         self._url = url
-        self._adapter = adapter
-        self._toc = toc
+        self._plugin = plugin
         pass
+
+    def to_epub(self):
+
+        self.process()
+
+        # path_ebook = f'{OUTPUT_EBOOK}{self.id()}'
+        # path_md = f'{OUTPUT_MD}{self.id()}'
+        # path_id = f'{OUTPUT_MD}{self.id()}/{self.id()}'
+
+        # metadata = [
+        #     f'title="{self.title()}"',
+        #     'author="AWS"',
+        #     'language="en-US"',
+        # ]
+
+        # metadata_args = ' --metadata '.join(map(str, metadata))
+
+        # epub_command = f'pandoc --resource-path {path_md}{RESOURCES_DIR} --metadata {metadata_args} -o {path_ebook}.epub {path_id}.md'
+
+        # print(epub_command)
+
+        # os.system(epub_command)
+
+        # return self
+
+    def to_mobi(self):
+
+        self.to_epub()
+
+        # path_ebook = f'{OUTPUT_EBOOK}{self.id()}'
+
+        # mobi_args = [
+        #     '--mobi-file-type new',
+        #     '--personal-doc',
+        #     '--prefer-author-sort',
+        # ]
+
+        # mobi_args_str = ' '.join(map(str, mobi_args))
+
+        # mobi_command = f'{CALIBRE_CLI_PATH} {path_ebook}.epub {path_ebook}.mobi {mobi_args_str}'
+
+        # print(mobi_command)
+
+        # os.system(mobi_command)
 
     def base_url(self) -> str:
         return re.sub("/[\w+\-\_]*.html", "/", self._url.split('?')[0])
@@ -50,110 +119,51 @@ class DocsPage:
 
         return self.base_url() + '/' + self._toc['href']
 
-    def root_id(self):
-        return self.base_url().split('/')[len(self.base_url().split('/'))-2]
-
     def id(self) -> str:
-
-        if 'href' not in self._toc:
-            return self.root_id()
-
-        return re.sub('.html', '', self._toc['href'])
-
-    def content(self):
-        # Return cached content if available
-        if hasattr(self, '_content'):
-            return self._content
-
-        res = requests.get(self.url())
-        html = res.content.decode('utf-8')
-        soup = bs4.BeautifulSoup(html, 'lxml')
-        self._content = soup.select_one('#main-col-body')
-
-        for REMOVE_TAG in REMOVE_HTML_TAGS:
-            for tag in self._content.find_all(REMOVE_TAG):
-                tag.decompose()
-
-        return self._content
+        return self.base_url().split('/')[len(self.base_url().split('/'))-2]
 
     def content_title(self):
         return self.content().h1.text.strip()
 
     def title(self):
 
-        if 'title' not in self._toc:
-            return self.content_title()
+        # if 'title' not in self._toc:
+        #     return self.content_title()
 
         return self._toc['title']
 
-    def children(self) -> list:
-
-        if 'contents' not in self._toc:
-            return []
-
-        return list(map(lambda page_toc: DocsPage(self._url, page_toc), self._toc['contents']))
-
-    def has_children(self):
-        return len(self.children()) > 0
-
-    def markdown(self) -> str:
-
-        html = re.sub(r'[\ \n]{2,}', ' ', str(self.content()))
-        html = re.sub(r'<p>[\ \n]{1,}', '<p>', html)
-        html = re.sub(r'[\ \n]{1,}</p>', '</p>', html)
-        html = re.sub(r'</ul>', '</ul>\n\n', html)
-
-        md = markdownify.markdownify(html, heading_style=markdownify.ATX)
-
-        # Remove excess new lines
-        md = re.sub(r'[\n]{4,}\t\+', '\n\t+', md)
-
-        # Replace relative ./ paths with absolute
-        md = re.sub(r'\.\/', self.base_url(), md)
-
-        if self.has_children():
-            for page in self.children():
-                print(page)
-                md += page.markdown()
-
-        # md = self.process_markdown_images(md)
-
-        return md
-
-    def validate(self) -> bool:
-
-        match = re.compile(REGEX_DOC_URL).match(self._url)
-
-        if match is None:
-            raise ValueError(ENTER_DOC_URL)
-
-        return True
-
-    def __str__(self) -> str:
-        return f'<DocsPage id={self.id()}>'
-
-
-class Docs(DocsPage):
-
-    def toc(self):
-
-        if 'contents' in self._toc:
-            return self._toc['contents']
+    def items(self):
 
         res = requests.get(self.base_url() + 'toc-contents.json')
 
-        self._toc = json.loads(res.text)
+        self._toc = self._plugin.toc(json.loads(res.text))
 
-        return self._toc['contents']
+        return self._toc
 
-    def process_markdown_images(self, md) -> str:
+    def process(self):
+
+        if not os.path.exists(OUTPUT_MD + self.id()):
+            os.makedirs(OUTPUT_MD + self.id())
+
+        # Flatten all items to a single markdown string
+        md = '\n'.join(list(map(self.item, self.items())))
+
+        # Process markdown images
+        md = self.images(md)
+
+        # filename = self.id() + '/' + self.id()
+        # file = open(OUTPUT_MD + filename + '.md', 'w+')
+        # file.write(md)
+        # file.close()
+
+    def images(self, md) -> str:
 
         images = re.findall(REGEX_MD_IMAGE, md)
 
         if len(images) == 0:
             return md
 
-        RESOURCES_OUTPUT_DIR = OUTPUT_MD + self.root_id() + RESOURCES_DIR + '/'
+        RESOURCES_OUTPUT_DIR = OUTPUT_MD + self.id() + RESOURCES_DIR + '/'
 
         if not os.path.exists(RESOURCES_OUTPUT_DIR):
             os.makedirs(RESOURCES_OUTPUT_DIR)
@@ -175,68 +185,54 @@ class Docs(DocsPage):
 
         return md
 
-    def to_markdown(self):
+    def item(self, item: TocItem):
 
-        if not os.path.exists(OUTPUT_MD + self.id()):
-            os.makedirs(OUTPUT_MD + self.id())
+        print(item)
 
-        print(self)
+        # Make HTTP request to get the HTML content
+        html = self.request(item)
 
-        self.toc()
+        # Let the plugin pre-process HTML
+        html = self._plugin.html(html)
 
-        md = '\n'.join(
-            list(map(lambda page: page.markdown(), self.children())))
+        # Convert HTML to Markdown
+        md = markdownify.markdownify(html, heading_style=markdownify.ATX)
 
-        md = self.process_markdown_images(md)
+        # Let the plugin post-process markdown
+        md = self._plugin.markdown(md, PluginData(self.base_url()))
 
-        filename = self.id() + '/' + self.id()
-        file = open(OUTPUT_MD + filename + '.md', 'w+')
-        file.write(md)
-        file.close()
+        for item in item.children:
+            md += self.item(item)
 
-    def to_epub(self):
+        return md
 
-        self.to_markdown()
+    def request(self, item: TocItem):
 
-        path_ebook = f'{OUTPUT_EBOOK}{self.id()}'
-        path_md = f'{OUTPUT_MD}{self.id()}'
-        path_id = f'{OUTPUT_MD}{self.id()}/{self.id()}'
+        if self._content is not None:
+            return self._content
 
-        metadata = [
-            f'title="{self.title()}"',
-            'author="AWS"',
-            'language="en-US"',
-        ]
+        res = requests.get(self.base_url() + item.uri)
 
-        metadata_args = ' --metadata '.join(map(str, metadata))
+        html = res.content.decode('utf-8')
 
-        epub_command = f'pandoc --resource-path {path_md}{RESOURCES_DIR} --metadata {metadata_args} -o {path_ebook}.epub {path_id}.md'
+        soup = bs4.BeautifulSoup(html, 'lxml')
 
-        print(epub_command)
+        self._content = soup.select_one(self._plugin.mapping('content'))
 
-        os.system(epub_command)
+        for REMOVE_TAG in REMOVE_HTML_TAGS:
+            for tag in self._content.find_all(REMOVE_TAG):
+                tag.decompose()
 
-        return self
+        return self._content
 
-    def to_mobi(self):
+    def validate(self) -> bool:
 
-        self.to_epub()
+        match = re.compile(REGEX_DOC_URL).match(self._url)
 
-        path_ebook = f'{OUTPUT_EBOOK}{self.id()}'
+        if match is None:
+            raise ValueError(ENTER_DOC_URL)
 
-        mobi_args = [
-            '--mobi-file-type new',
-            '--personal-doc',
-            '--prefer-author-sort',
-        ]
-
-        mobi_args_str = ' '.join(map(str, mobi_args))
-
-        mobi_command = f'{CALIBRE_CLI_PATH} {path_ebook}.epub {path_ebook}.mobi {mobi_args_str}'
-
-        print(mobi_command)
-
-        os.system(mobi_command)
+        return True
 
     def __str__(self) -> str:
         return f'<Docs id={self.id()}>'
@@ -249,7 +245,7 @@ def init(args) -> Docs:
     else:
         url = input(ENTER_DOC_URL)
 
-    # @todo select adapter from regex matcher
-    adapter = ADAPTERS[0]
+    # @todo select plugin from regex matcher
+    plugin = ADAPTERS[0]
 
-    return Docs(url, adapter)
+    return Docs(url, plugin)

@@ -1,12 +1,10 @@
-from Abstract import Adapter
+from Integration import Plugin
 
-class AWSAdapter(Adapter):
+class AWSPlugin(Plugin):
     
     def regex(self):
         return r'^https://docs.aws.amazon.com/.*'
     
-    def toc(self):
-        pass
     
     
     
