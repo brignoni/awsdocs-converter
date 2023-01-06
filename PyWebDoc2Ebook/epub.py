@@ -1,14 +1,14 @@
 import sys
-import Converter
+import Scrapper
 
 
 def main(args):
 
-    doc = Converter.init(args)
+    scrapper = Scrapper.init(args)
 
-    doc.validate()
+    scrapper.validate()
 
-    doc.to_epub()
+    scrapper.epub()
 
 
 if __name__ == "__main__":

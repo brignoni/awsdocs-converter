@@ -1,4 +1,4 @@
-from Integration import Plugin
+from Plugin import Plugin
 
 class LPICPlugin(Plugin):
     

@@ -1,10 +1,8 @@
-from Integration import Plugin
+from Plugin import Plugin
 
 class AWSPlugin(Plugin):
     
-    def regex(self):
-        return r'^https://docs.aws.amazon.com/.*'
-    
+    domain = 'docs.aws.amazon.com'   
     
     
     
