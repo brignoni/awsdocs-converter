@@ -1,5 +1,4 @@
 import bs4
-import json
 import markdownify
 import sys
 import os
@@ -7,7 +6,6 @@ import re
 import requests
 import PluginImporter
 from Plugin import TocItem
-from plugins.AWSPlugin import AWSPlugin
 
 # getting the name of the directory
 # where the this file is present.
@@ -38,7 +36,9 @@ class PyWebDoc2Ebook:
 
     def epub(self):
 
-        self.markdown()
+        if not self.markdown():
+            print('Epub processing aborted.')
+            return False
 
         metadata = [
             f'title="{self.title()}"',
@@ -54,11 +54,13 @@ class PyWebDoc2Ebook:
 
         os.system(epub_command)
 
-        return self
+        return True
 
     def mobi(self):
 
-        self.epub()
+        if not self.epub():
+            print('Mobi processing aborted.')
+            return False
 
         mobi_args = [
             '--mobi-file-type new',
@@ -74,10 +76,22 @@ class PyWebDoc2Ebook:
 
         os.system(mobi_command)
 
-        return self
+        return True
+
+    def base(self) -> str:
+        return '/'.join(self._url.split('/')[:-1])
+
+    def prefix(self):
+        return re.sub(r'[\.]+', '-', self._plugin.domain)
+
+    def suffix(self):
+        segments = self._url.split('/')
+        return segments.pop()
 
     def id(self) -> str:
-        return re.sub(r'[\.]+', '-', self._plugin.domain) + '-' + self.base().split('/')[len(self.base().split('/'))-2]
+        id = list(filter(lambda s: s, self._url.split('/'))).pop()
+        id = re.sub(r'(\.html)', '', id)
+        return f'{self.prefix()}-{id}'
 
     def path(self) -> str:
         return f'{OUTPUT}{self.id()}'
@@ -85,35 +99,36 @@ class PyWebDoc2Ebook:
     def pathname(self):
         return f'{OUTPUT}{self.id()}/{self.id()}'
 
-    def base(self) -> str:
-        return re.sub("/[\w+\-\_]*.html", "/", self._url.split('?')[0])
-
-    def url(self) -> str:
-        if 'href' not in self._toc:
-            return self._url
-        return self.base() + '/' + self._toc['href']
-
     def title(self):
         return self._toc.title
 
     def items(self):
 
         if self._toc is not None:
-            return self._toc
+            return self._toc.items
 
-        res = requests.get(self.base() + 'toc-contents.json')
+        url = self._url
 
-        response = json.loads(res.text)
+        if len(self._plugin.toc_filename) > 0:
+            url = f'{self.base()}/{self._plugin.toc_filename}'
 
-        self._toc = self._plugin.toc(response)
+        res = requests.get(url)
 
-        file = open(self.pathname() + '-toc.html', 'w+')
-        file.write(str(self._toc))
-        file.close()
+        if self._plugin.toc_format == 'json':
+            res = res.json()
+        else:
+            html = res.content.decode('utf-8')
+            res = bs4.BeautifulSoup(html, 'lxml')
+
+        self._toc = self._plugin.toc(res)
 
         return self._toc.items
 
     def markdown(self):
+
+        if not self.found():
+            print('No items found in TOC.')
+            return False
 
         if not os.path.exists(self.path()):
             os.makedirs(self.path())
@@ -131,6 +146,8 @@ class PyWebDoc2Ebook:
         file = open(self.pathname() + '.md', 'w+')
         file.write(md)
         file.close()
+
+        return True
 
     def images(self, md: str) -> str:
 
@@ -162,7 +179,11 @@ class PyWebDoc2Ebook:
 
         return md
 
+    def found(self):
+        return len(self.items()) > 0
+
     def item(self, item: TocItem):
+        print(item)
 
         # Make HTTP request to get the HTML content.
         html = self.request(item)
@@ -183,15 +204,15 @@ class PyWebDoc2Ebook:
         if self._content.get(item.uri) is not None:
             return self._content.get(item.uri)
 
-        print(item)
+        url = self._plugin.url(item, self.base())
 
-        res = requests.get(self.base() + item.uri)
+        res = requests.get(url)
 
         html = res.content.decode('utf-8')
 
         soup = bs4.BeautifulSoup(html, 'lxml')
 
-        content = soup.select_one(self._plugin.mapping('content'))
+        content = soup.select_one(self._plugin.html_content_selector)
 
         for REMOVE_TAG in self._plugin.html_remove():
             for tag in content.find_all(REMOVE_TAG):

@@ -18,11 +18,13 @@ class TocItems:
 
     items = []
 
-    title: str
+    title = 'Untitled'
 
     uri: str
 
-    def add(self, title: str, uri: str):
+    def add(self, title, uri):
+        if type(title) != str or type(uri) != str:
+            return
         if len(self.items) == 0:
             self.title = title
             self.uri = uri
@@ -52,37 +54,62 @@ class Plugin:
         'title': 'title',
         'uri': 'href',
         'children': 'contents',
-        'content': '#main-col-body'
     }
 
-    remove_html_selectors = []
+    html_content_selector = 'body'
+
+    html_toc_selector = ''
+
+    html_remove_selectors = []
+
+    # Alternate filename for TOC.
+    # Defaults to find the TOC in the initial URL as HTML content.
+    toc_filename = ''
+
+    # The expected TOC content format
+    # Values: html | json
+    toc_format = 'html'
 
     _items = TocItems()
 
     def mapping(self, key) -> str:
         return self.map.get(key)
 
-    def add(self, item):
-        if self.mapping('title') not in item:
-            return
-        if self.mapping('uri') not in item:
-            return
-        self._items.add(
-            item[self.mapping('title')],
-            item[self.mapping('uri')]
-        )
+    def add(self, title, uri):
+        self._items.add(title, uri)
 
     def toc(self, response):
+        if self.toc_format == 'json':
+            return self.toc_json(response)
+        else:
+            return self.toc_html(response)
 
-        self.add(response)
+    def toc_html(self, soup):
 
-        if self.mapping('children') not in response:
-            return self._items
+        starting_with = f"https://{self.domain}"
 
-        for child in response[self.mapping('children')]:
+        links = self.html_links(soup, starting_with)
+
+        for link in links:
+            self.add(link.get_text(), link.get('href'))
+
+        return self.items()
+
+    def toc_json(self, json):
+
+        if self.mapping('title') in json and self.mapping('uri') in json:
+            self.add(
+                json[self.mapping('title')],
+                json[self.mapping('uri')]
+            )
+
+        if self.mapping('children') not in json:
+            return self.items()
+
+        for child in json[self.mapping('children')]:
             self.toc(child)
 
-        return self._items
+        return self.items()
 
     def html(self, html: str) -> str:
         html = re.sub(r'[\ \n]{2,}', ' ', html)
@@ -92,11 +119,27 @@ class Plugin:
         return html
 
     def html_remove(self):
-        return self.remove_html_selectors
+        return self.html_remove_selectors
+
+    def html_links(self, soup, starting_with=None):
+        attrs = {}
+        if type(starting_with) == str:
+            attrs = {
+                'href': re.compile(f"^{starting_with}")
+            }
+        return soup.findAll('a', attrs=attrs)
 
     def markdown(self, md) -> str:
         # Remove excess new lines
         return re.sub(r'[\n]{4,}\t\+', '\n\t+', md)
+
+    def url(self, item, base_url: str):
+        if re.search(base_url, item.uri):
+            return item.uri
+        return f'{base_url}/{item.uri}'
+
+    def items(self) -> TocItems:
+        return self._items
 
     def __str__(self) -> str:
         return f'<{self.__class__.__name__} domain="{self.domain}"/>'
