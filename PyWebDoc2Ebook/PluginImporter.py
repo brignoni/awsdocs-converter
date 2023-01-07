@@ -7,6 +7,7 @@ def get_plugin_by_url(url):
 
     for plugin in plugins:
         if re.search(plugin.domain, url):
+            print(plugin)
             return plugin
 
     raise Exception('Plugin not found for this URL')

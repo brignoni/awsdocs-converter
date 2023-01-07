@@ -24,7 +24,6 @@ sys.path.append(parent)
 CALIBRE_CLI_PATH = '/Applications/calibre.app/Contents/MacOS/ebook-convert'
 OUTPUT = '.output/'
 ENTER_DOC_URL = 'Enter URL: '
-REGEX_MD_IMAGE = r'\((/images/.*\.\w+)\)'
 RESOURCES_DIR = '/resources'
 
 
@@ -44,7 +43,7 @@ class PyWebDoc2Ebook:
         metadata = [
             f'title="{self.title()}"',
             f'author="{self._plugin.domain}"',
-            'language="en-US"',
+            f'language="{self._plugin.language}"',
         ]
 
         metadata_args = ' --metadata '.join(map(str, metadata))
@@ -78,7 +77,7 @@ class PyWebDoc2Ebook:
         return self
 
     def id(self) -> str:
-        return self.base().split('/')[len(self.base().split('/'))-2]
+        return re.sub(r'[\.]+', '-', self._plugin.domain) + '-' + self.base().split('/')[len(self.base().split('/'))-2]
 
     def path(self) -> str:
         return f'{OUTPUT}{self.id()}'
@@ -209,8 +208,6 @@ class PyWebDoc2Ebook:
 def init(url):
 
     plugin = PluginImporter.get_plugin_by_url(url)
-
-    print(plugin)
 
     return PyWebDoc2Ebook(url, plugin)
 

@@ -44,6 +44,10 @@ class Plugin:
 
     domain: str
 
+    image_regex = r'\((/images/.*\.\w+)\)'
+
+    language = 'en-US'
+
     map = {
         'title': 'title',
         'uri': 'href',
@@ -52,8 +56,6 @@ class Plugin:
     }
 
     remove_html_selectors = []
-
-    image_regex = r'\((/images/.*\.\w+)\)'
 
     _items = TocItems()
 
