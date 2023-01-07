@@ -18,3 +18,16 @@ class AWSPlugin(Plugin):
     toc_filename = 'toc-contents.json'
 
     toc_format = 'json'
+
+    def toc_json(self, json):
+        
+        if 'title' in json and 'href' in json:
+            self.add(json['title'], json['href'])
+
+        if 'contents' not in json:
+            return self.items()
+
+        for child in json['contents']:
+            self.toc(child)
+
+        return self.items()

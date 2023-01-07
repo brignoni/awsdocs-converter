@@ -46,15 +46,13 @@ class Plugin:
 
     domain: str
 
+    absolute_url_regex = r"^(http|https)://(.*)"
+
     image_regex = r'\((/images/.*\.\w+)\)'
 
-    language = 'en-US'
+    link_regex = r"^(\/|https://|http://)(.*)"
 
-    map = {
-        'title': 'title',
-        'uri': 'href',
-        'children': 'contents',
-    }
+    language = 'en-US'
 
     html_content_selector = 'body'
 
@@ -72,9 +70,6 @@ class Plugin:
 
     _items = TocItems()
 
-    def mapping(self, key) -> str:
-        return self.map.get(key)
-
     def add(self, title, uri):
         self._items.add(title, uri)
 
@@ -85,10 +80,9 @@ class Plugin:
             return self.toc_html(response)
 
     def toc_html(self, soup):
-
-        starting_with = f"https://{self.domain}"
-
-        links = self.html_links(soup, starting_with)
+        links = soup.findAll('a', attrs={
+            'href': re.compile(self.link_regex)
+        })
 
         for link in links:
             self.add(link.get_text(), link.get('href'))
@@ -97,17 +91,7 @@ class Plugin:
 
     def toc_json(self, json):
 
-        if self.mapping('title') in json and self.mapping('uri') in json:
-            self.add(
-                json[self.mapping('title')],
-                json[self.mapping('uri')]
-            )
-
-        if self.mapping('children') not in json:
-            return self.items()
-
-        for child in json[self.mapping('children')]:
-            self.toc(child)
+        print(f'{self.__class__.__name__}.toc_json() not implemented.')
 
         return self.items()
 
@@ -121,22 +105,26 @@ class Plugin:
     def html_remove(self):
         return self.html_remove_selectors
 
-    def html_links(self, soup, starting_with=None):
-        attrs = {}
-        if type(starting_with) == str:
-            attrs = {
-                'href': re.compile(f"^{starting_with}")
-            }
-        return soup.findAll('a', attrs=attrs)
-
     def markdown(self, md) -> str:
         # Remove excess new lines
         return re.sub(r'[\n]{4,}\t\+', '\n\t+', md)
 
     def url(self, item, base_url: str):
-        if re.search(base_url, item.uri):
+        if re.search(self.absolute_url_regex, item.uri):
             return item.uri
-        return f'{base_url}/{item.uri}'
+
+        if base_url.endswith('/'):
+            base_url = base_url[:-1]
+
+        uri = item.uri
+
+        if uri.startswith('/'):
+            uri = uri[1:]
+
+        return f'{base_url}/{uri}'
+
+    def toc_url(self, url):
+        return None
 
     def items(self) -> TocItems:
         return self._items

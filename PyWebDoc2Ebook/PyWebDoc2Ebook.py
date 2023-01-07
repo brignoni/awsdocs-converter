@@ -30,7 +30,7 @@ class PyWebDoc2Ebook:
     _content = dict()
     _toc = None
 
-    def __init__(self, url, plugin, toc={'root': True}) -> None:
+    def __init__(self, url, plugin) -> None:
         self._url = url
         self._plugin = plugin
 
@@ -109,7 +109,12 @@ class PyWebDoc2Ebook:
 
         url = self._url
 
-        if len(self._plugin.toc_filename) > 0:
+        plugin_toc_url = self._plugin.toc_url(self._url)
+
+
+        if type(plugin_toc_url) == str:
+            url = plugin_toc_url
+        elif len(self._plugin.toc_filename) > 0:
             url = f'{self.base()}/{self._plugin.toc_filename}'
 
         res = requests.get(url)
