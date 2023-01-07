@@ -51,7 +51,11 @@ class Plugin:
         'content': '#main-col-body'
     }
 
-    items = TocItems()
+    remove_html_selectors = []
+
+    image_regex = r'\((/images/.*\.\w+)\)'
+
+    _items = TocItems()
 
     def mapping(self, key) -> str:
         return self.map.get(key)
@@ -61,22 +65,22 @@ class Plugin:
             return
         if self.mapping('uri') not in item:
             return
-        self.items.add(
+        self._items.add(
             item[self.mapping('title')],
             item[self.mapping('uri')]
         )
 
-    def toc(self, item):
+    def toc(self, response):
 
-        self.add(item)
+        self.add(response)
 
-        if self.mapping('children') not in item:
-            return self.items
+        if self.mapping('children') not in response:
+            return self._items
 
-        for child in item[self.mapping('children')]:
+        for child in response[self.mapping('children')]:
             self.toc(child)
 
-        return self.items
+        return self._items
 
     def html(self, html: str) -> str:
         html = re.sub(r'[\ \n]{2,}', ' ', html)
@@ -85,12 +89,12 @@ class Plugin:
         html = re.sub(r'</ul>', '</ul>\n\n', html)
         return html
 
+    def html_remove(self):
+        return self.remove_html_selectors
+
     def markdown(self, md) -> str:
-
         # Remove excess new lines
-        md = re.sub(r'[\n]{4,}\t\+', '\n\t+', md)
-
-        return md
+        return re.sub(r'[\n]{4,}\t\+', '\n\t+', md)
 
     def __str__(self) -> str:
-        return f'<{self.__class__.__name__}>'
+        return f'<{self.__class__.__name__} domain="{self.domain}"/>'

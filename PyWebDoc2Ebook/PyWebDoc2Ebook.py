@@ -5,6 +5,7 @@ import sys
 import os
 import re
 import requests
+import PluginImporter
 from Plugin import TocItem
 from plugins.AWSPlugin import AWSPlugin
 
@@ -23,23 +24,11 @@ sys.path.append(parent)
 CALIBRE_CLI_PATH = '/Applications/calibre.app/Contents/MacOS/ebook-convert'
 OUTPUT = '.output/'
 ENTER_DOC_URL = 'Enter URL: '
-REGEX_DOC_URL = r'^https://docs.aws.amazon.com/.*'
 REGEX_MD_IMAGE = r'\((/images/.*\.\w+)\)'
 RESOURCES_DIR = '/resources'
-REMOVE_HTML_TAGS = [
-    'awsdocs-page-header',
-    'awsdocs-copyright',
-    'awsdocs-thumb-feedback',
-    'awsdocs-language-banner',
-    'awsdocs-filter-selector',
-]
-
-ADAPTERS = [
-    AWSPlugin()
-]
 
 
-class Docs:
+class PyWebDoc2Ebook:
 
     _content = dict()
     _toc = None
@@ -54,7 +43,7 @@ class Docs:
 
         metadata = [
             f'title="{self.title()}"',
-            'author="AWS"',
+            f'author="{self._plugin.domain}"',
             'language="en-US"',
         ]
 
@@ -146,10 +135,8 @@ class Docs:
 
     def images(self, md: str) -> str:
 
-        images = re.findall(REGEX_MD_IMAGE, md)
-        print(f'BEFORE: {len(images)}')
-        images = list(set(images))
-        print(f'AFTER: {len(images)}')
+        # Find all images and remove duplicates.
+        images = list(set(re.findall(self._plugin.image_regex, md)))
 
         if len(images) == 0:
             return md
@@ -207,7 +194,7 @@ class Docs:
 
         content = soup.select_one(self._plugin.mapping('content'))
 
-        for REMOVE_TAG in REMOVE_HTML_TAGS:
+        for REMOVE_TAG in self._plugin.html_remove():
             for tag in content.find_all(REMOVE_TAG):
                 tag.decompose()
 
@@ -215,27 +202,24 @@ class Docs:
 
         return str(content)
 
-    def validate(self) -> bool:
-
-        match = re.compile(REGEX_DOC_URL).match(self._url)
-
-        if match is None:
-            raise ValueError(ENTER_DOC_URL)
-
-        return True
-
     def __str__(self) -> str:
-        return f'<Docs id={self.id()}/>'
+        return f'<PyWebDoc2Ebook id="{self.id()}"/>'
 
 
-def init(args) -> Docs:
+def init(url):
+
+    plugin = PluginImporter.get_plugin_by_url(url)
+
+    print(plugin)
+
+    return PyWebDoc2Ebook(url, plugin)
+
+
+def input(args) -> PyWebDoc2Ebook:
 
     if len(args) > 0:
         url = args[0]
     else:
         url = input(ENTER_DOC_URL)
 
-    # @todo select plugin from regex matcher
-    plugin = ADAPTERS[0]
-
-    return Docs(url, plugin)
+    return init(url)

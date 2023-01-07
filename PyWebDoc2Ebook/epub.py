@@ -1,14 +1,10 @@
 import sys
-import Scrapper
+import PyWebDoc2Ebook
 
 
 def main(args):
 
-    scrapper = Scrapper.init(args)
-
-    scrapper.validate()
-
-    scrapper.epub()
+    PyWebDoc2Ebook.input(args).epub()
 
 
 if __name__ == "__main__":
